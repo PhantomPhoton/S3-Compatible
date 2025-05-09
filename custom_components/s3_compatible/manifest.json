@@ -1,0 +1,13 @@
+{
+  "domain": "s3_compatible",
+  "name": "S3 Compatible",
+  "codeowners": ["@PhantomPhoton"],
+  "config_flow": true,
+  "documentation": "https://github.com/PhantomPhoton/S3-Compatible",
+  "iot_class": "cloud_push",
+  "loggers": ["aiobotocore"],
+  "quality_scale": "bronze",
+  "dependencies": [],
+  "requirements": ["aiobotocore==2.21.1"],
+  "version": "0.0.1"
+}
