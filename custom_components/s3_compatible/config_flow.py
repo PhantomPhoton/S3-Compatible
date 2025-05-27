@@ -22,6 +22,7 @@ from .const import (
     CONF_BUCKET,
     CONF_ENDPOINT_URL,
     CONF_SECRET_ACCESS_KEY,
+    CONF_PREFIX,
     DEFAULT_ENDPOINT_URL,
     DESCRIPTION_AWS_S3_DOCS_URL,
     DESCRIPTION_BOTO3_DOCS_URL,
@@ -35,6 +36,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
             config=TextSelectorConfig(type=TextSelectorType.PASSWORD)
         ),
         vol.Required(CONF_BUCKET): cv.string,
+        vol.Required(CONF_PREFIX, default=""): cv.string,
         vol.Required(CONF_ENDPOINT_URL, default=DEFAULT_ENDPOINT_URL): TextSelector(
             config=TextSelectorConfig(type=TextSelectorType.URL)
         ),
