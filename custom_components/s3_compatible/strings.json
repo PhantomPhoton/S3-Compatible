@@ -6,7 +6,8 @@
           "access_key_id": "Access key ID",
           "secret_access_key": "Secret access key",
           "bucket": "Bucket name",
-          "endpoint_url": "Endpoint URL"
+          "endpoint_url": "Endpoint URL",
+          "prefix": "Prefix"
         },
         "data_description": {
           "access_key_id": "Access key ID to connect to AWS S3 API",

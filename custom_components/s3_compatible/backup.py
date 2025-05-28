@@ -19,7 +19,7 @@ from homeassistant.components.backup import (
 from homeassistant.core import HomeAssistant, callback
 
 from . import S3ConfigEntry
-from .const import CONF_BUCKET, DATA_BACKUP_AGENT_LISTENERS, DOMAIN
+from .const import CONF_BUCKET, CONF_PREFIX, DATA_BACKUP_AGENT_LISTENERS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 CACHE_TTL = 300
@@ -79,10 +79,10 @@ def async_register_backup_agents_listener(
     return remove_listener
 
 
-def suggested_filenames(backup: AgentBackup) -> tuple[str, str]:
+def suggested_filenames(backup: AgentBackup, prefix: str) -> tuple[str, str]:
     """Return the suggested filenames for the backup and metadata files."""
     base_name = suggested_filename(backup).rsplit(".", 1)[0]
-    return f"{base_name}.tar", f"{base_name}.metadata.json"
+    return f"{prefix}{base_name}.tar", f"{prefix}{base_name}.metadata.json"
 
 
 class S3BackupAgent(BackupAgent):
@@ -95,6 +95,10 @@ class S3BackupAgent(BackupAgent):
         super().__init__()
         self._client = entry.runtime_data
         self._bucket: str = entry.data[CONF_BUCKET]
+        if CONF_PREFIX in entry.data:
+            self._prefix: str = entry.data[CONF_PREFIX]
+        else:
+            self._prefix: str = ""
         self.name = entry.title
         self.unique_id = entry.entry_id
         self._backup_cache: dict[str, AgentBackup] = {}
@@ -112,7 +116,7 @@ class S3BackupAgent(BackupAgent):
         :return: An async iterator that yields bytes.
         """
         backup = await self._find_backup_by_id(backup_id)
-        tar_filename, _ = suggested_filenames(backup)
+        tar_filename, _ = suggested_filenames(backup, self._prefix)
 
         response = await self._client.get_object(Bucket=self._bucket, Key=tar_filename)
         return response["Body"].iter_chunks()
@@ -129,7 +133,7 @@ class S3BackupAgent(BackupAgent):
         :param open_stream: A function returning an async iterator that yields bytes.
         :param backup: Metadata about the backup that should be uploaded.
         """
-        tar_filename, metadata_filename = suggested_filenames(backup)
+        tar_filename, metadata_filename = suggested_filenames(backup, self._prefix)
 
         try:
             if backup.size < MULTIPART_MIN_PART_SIZE_BYTES:
@@ -259,7 +263,7 @@ class S3BackupAgent(BackupAgent):
         :param backup_id: The ID of the backup that was returned in async_list_backups.
         """
         backup = await self._find_backup_by_id(backup_id)
-        tar_filename, metadata_filename = suggested_filenames(backup)
+        tar_filename, metadata_filename = suggested_filenames(backup, self._prefix)
 
         # Delete both the backup file and its metadata file
         await self._client.delete_object(Bucket=self._bucket, Key=tar_filename)
@@ -297,7 +301,7 @@ class S3BackupAgent(BackupAgent):
             return self._backup_cache
 
         backups = {}
-        response = await self._client.list_objects_v2(Bucket=self._bucket)
+        response = await self._client.list_objects_v2(Bucket=self._bucket, Prefix=self._prefix)
 
         # Filter for metadata files only
         metadata_files = [
