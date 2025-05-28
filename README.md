@@ -1,3 +1,7 @@
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/hacs/integration)
+[![GitHub release](https://img.shields.io/github/release/PhantomPhoton/S3-Compatible.svg)](https://GitHub.com/PhantomPhoton/S3-Compatible/releases/)
+[![HA integration usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=integration%20usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.s3_compatible.total)](https://analytics.home-assistant.io/custom_integrations.json)
+
 # S3 Compatible for Home Assistant
 
 A Home Assistant custom integration to support uploading backups to S3 compatible endpoints. This is a slight modification of the official [AWS S3](https://www.home-assistant.io/integrations/aws_s3) integration.
@@ -16,17 +20,16 @@ You can install this component in two ways: via [HACS](https://github.com/hacs/i
 6. Click Add
 7. On main HASC screen, select `S3 Compatible` and install
 8. Restart Home Assistant
+9. [Setup a new backup target location](https://my.home-assistant.io/redirect/config_flow_start/?domain=s3_compatible)
+10. Once finished, it will show up as an available backup target
+
 
 ### Option B: Manual installation (custom_component)
 
-TODO
-
-## Component configuration
-
-Once the component has been installed, you need to configure it using the web interface in order to make it work.
-
-1. Go to "Settings->Devices & Services".
-2. Click "+ Add Integration".
-3. Search for "S3 Compatible"
-4. Select the integration and **Follow setup workflow**
-5. Once finished, it will show up as an available backup target
+1. Copy the `custom_components/s3_compatible` directory to your custom_components directory
+2. Restart Home Assistant
+3. Go to "Settings->Devices & Services".
+4. Click "+ Add Integration".
+5. Search for "S3 Compatible"
+6. Select the integration and **Follow setup workflow**
+7. Once finished, it will show up as an available backup target
