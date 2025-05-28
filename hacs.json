@@ -1,6 +1,5 @@
 {
   "name": "S3 Compatible",
-  "domains": [],
-  "issue_tracker": "https://github.com/PhantomPhoton/S3-Compatible/issues",
+  "homeassistant": "2025.5.0",
   "render_readme": true
 }
