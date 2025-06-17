@@ -13,15 +13,13 @@ You can install this component in two ways: via [HACS](https://github.com/hacs/i
 ### Option A: Installing via HACS
 
 1. Open HACS
-2. Click the three dots in the upper right
-3. Click on Custom repositories
-4. Put `https://github.com/PhantomPhoton/S3-Compatible` as the repository
-5. Select `Integration` as the Type
-6. Click Add
-7. On main HASC screen, select `S3 Compatible` and install
-8. Restart Home Assistant
-9. [Setup a new backup target location](https://my.home-assistant.io/redirect/config_flow_start/?domain=s3_compatible)
-10. Once finished, it will show up as an available backup target
+2. Search for `S3 Compatible`
+3. Expand the `Available for download` section
+4. Select `S3 Compatible`
+5. Click `Download` in the lower right of the details page
+6. Restart Home Assistant
+7. [Setup a new backup target location](https://my.home-assistant.io/redirect/config_flow_start/?domain=s3_compatible)
+8. Once finished, it will show up as an available backup target
 
 
 ### Option B: Manual installation (custom_component)
