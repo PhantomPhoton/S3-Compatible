@@ -164,7 +164,7 @@ class S3BackupAgent(BackupAgent):
         :param tar_filename: The target filename for the backup.
         :param open_stream: A function returning an async iterator that yields bytes.
         """
-        _LOGGER.debug("Starting simple upload for %s", tar_filename)
+        _LOGGER.info("Starting simple upload for %s", tar_filename)
         stream = await open_stream()
         file_data = bytearray()
         async for chunk in stream:
@@ -186,7 +186,7 @@ class S3BackupAgent(BackupAgent):
         :param tar_filename: The target filename for the backup.
         :param open_stream: A function returning an async iterator that yields bytes.
         """
-        _LOGGER.debug("Starting multipart upload for %s", tar_filename)
+        _LOGGER.info("Starting multipart upload for %s", tar_filename)
         multipart_upload = await self._client.create_multipart_upload(
             Bucket=self._bucket,
             Key=tar_filename,
@@ -196,16 +196,22 @@ class S3BackupAgent(BackupAgent):
             parts = []
             part_number = 1
             buffer_size = 0  # bytes
-            buffer: list[bytes] = []
+            buffer:bytearray = bytearray()
 
             stream = await open_stream()
             async for chunk in stream:
-                buffer_size += len(chunk)
-                buffer.append(chunk)
+                buffer.extend(chunk)
+                buffer_size = len(buffer)
 
                 # If buffer size meets minimum part size, upload it as a part
                 if buffer_size >= MULTIPART_MIN_PART_SIZE_BYTES:
-                    _LOGGER.debug(
+
+                    # Mega S4 requires all parts to be exactly the same size
+                    overflow = buffer[MULTIPART_MIN_PART_SIZE_BYTES:]
+                    buffer = buffer[:MULTIPART_MIN_PART_SIZE_BYTES]
+                    buffer_size = len(buffer)
+
+                    _LOGGER.info(
                         "Uploading part number %d, size %d", part_number, buffer_size
                     )
                     part = await self._client.upload_part(
@@ -213,16 +219,16 @@ class S3BackupAgent(BackupAgent):
                         Key=tar_filename,
                         PartNumber=part_number,
                         UploadId=upload_id,
-                        Body=b"".join(buffer),
+                        Body=buffer,
                     )
                     parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
                     part_number += 1
-                    buffer_size = 0
-                    buffer = []
+                    buffer = overflow
+                    buffer_size = len(buffer)
 
             # Upload the final buffer as the last part (no minimum size requirement)
             if buffer:
-                _LOGGER.debug(
+                _LOGGER.info(
                     "Uploading final part number %d, size %d", part_number, buffer_size
                 )
                 part = await self._client.upload_part(
@@ -230,7 +236,7 @@ class S3BackupAgent(BackupAgent):
                     Key=tar_filename,
                     PartNumber=part_number,
                     UploadId=upload_id,
-                    Body=b"".join(buffer),
+                    Body=buffer,
                 )
                 parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
 
