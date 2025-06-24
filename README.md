@@ -6,6 +6,12 @@
 
 A Home Assistant custom integration to support uploading backups to S3 compatible endpoints. This is a slight modification of the official [AWS S3](https://www.home-assistant.io/integrations/aws_s3) integration.
 
+## Known Working Services
+
+* [Amazon S3](https://aws.amazon.com/s3/)
+* [MinIO](https://min.io)
+* [MEGA S4](https://mega.io/objectstorage)
+
 ## Installation
 
 You can install this component in two ways: via [HACS](https://github.com/hacs/integration) or manually.
