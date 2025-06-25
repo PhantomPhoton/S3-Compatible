@@ -11,6 +11,7 @@ A Home Assistant custom integration to support uploading backups to S3 compatibl
 * [Amazon S3](https://aws.amazon.com/s3/)
 * [MinIO](https://min.io)
 * [MEGA S4](https://mega.io/objectstorage)
+* [Scaleway Object Storage](https://www.scaleway.com/en/object-storage/)
 
 ## Installation
 
