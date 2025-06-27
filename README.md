@@ -12,6 +12,7 @@ A Home Assistant custom integration to support uploading backups to S3 compatibl
 * [MinIO](https://min.io)
 * [MEGA S4](https://mega.io/objectstorage)
 * [Scaleway Object Storage](https://www.scaleway.com/en/object-storage/)
+* [Storj](https://www.storj.io/cloud-object-storage)
 
 ## Installation
 
