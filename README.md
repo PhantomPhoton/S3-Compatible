@@ -15,6 +15,7 @@ A Home Assistant custom integration to support uploading backups to S3 compatibl
 * [Storj](https://www.storj.io/cloud-object-storage)
 * [Cloudflare R2](https://www.cloudflare.com/developer-platform/products/r2/)
 * [Backblaze](https://www.backblaze.com/cloud-storage)
+* [IDrive® e2](https://www.idrive.com/s3-storage-e2/)
 
 ## Installation
 
