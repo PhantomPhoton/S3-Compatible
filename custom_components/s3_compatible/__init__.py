@@ -6,8 +6,7 @@ import logging
 from typing import cast
 
 from aiobotocore.client import AioBaseClient as S3Client
-from aiobotocore.session import AioSession
-from botocore.config import Config
+from aiobotocore.session import get_session
 from botocore.exceptions import ClientError, ConnectionError, ParamValidationError
 
 from homeassistant.config_entries import ConfigEntry
@@ -18,7 +17,6 @@ from .const import (
     BOTO_CONFIG,
     CONF_ACCESS_KEY_ID,
     CONF_BUCKET,
-    CONF_PREFIX,
     CONF_ENDPOINT_URL,
     CONF_SECRET_ACCESS_KEY,
     DATA_BACKUP_AGENT_LISTENERS,
@@ -34,18 +32,16 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: S3ConfigEntry) -> bool:
     """Set up S3 from a config entry."""
 
-    data = cast(dict, entry.data)
+    data = cast("dict", entry.data)
     try:
-        session = AioSession()
-        # pylint: disable-next=unnecessary-dunder-call
-        client = await session.create_client(
+        async with get_session().create_client(
             "s3",
             endpoint_url=data.get(CONF_ENDPOINT_URL),
             aws_secret_access_key=data[CONF_SECRET_ACCESS_KEY],
             aws_access_key_id=data[CONF_ACCESS_KEY_ID],
             config=BOTO_CONFIG,
-        ).__aenter__()
-        await client.head_bucket(Bucket=data[CONF_BUCKET])
+        ) as client:
+            await client.head_bucket(Bucket=data[CONF_BUCKET])
     except ClientError as err:
         raise ConfigEntryError(
             translation_domain=DOMAIN,
@@ -68,8 +64,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: S3ConfigEntry) -> bool:
             translation_key="cannot_connect",
         ) from err
 
-    entry.runtime_data = client
-
     def notify_backup_listeners() -> None:
         for listener in hass.data.get(DATA_BACKUP_AGENT_LISTENERS, []):
             listener()
@@ -81,6 +75,4 @@ async def async_setup_entry(hass: HomeAssistant, entry: S3ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: S3ConfigEntry) -> bool:
     """Unload a config entry."""
-    client = entry.runtime_data
-    await client.__aexit__(None, None, None)
     return True
