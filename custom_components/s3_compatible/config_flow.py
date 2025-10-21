@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from aiobotocore.session import AioSession
+from aiobotocore.session import get_session
 from botocore.exceptions import ClientError, ConnectionError, ParamValidationError
 import voluptuous as vol
 
@@ -62,8 +62,7 @@ class S3ConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
             try:
-                session = AioSession()
-                async with session.create_client(
+                async with get_session().create_client(
                     "s3",
                     endpoint_url=user_input.get(CONF_ENDPOINT_URL),
                     aws_secret_access_key=user_input[CONF_SECRET_ACCESS_KEY],
