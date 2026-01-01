@@ -17,6 +17,7 @@ A Home Assistant custom integration to support uploading backups to S3 compatibl
 * [Backblaze](https://www.backblaze.com/cloud-storage)
 * [IDrive® e2](https://www.idrive.com/s3-storage-e2/)
 * [Hetzner Object Storage](https://www.hetzner.com/storage/object-storage/)
+* [SeaweedFS](https://seaweedfs.com)
 
 ## Installation
 
