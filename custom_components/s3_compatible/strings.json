@@ -6,6 +6,7 @@
           "access_key_id": "Access key ID",
           "secret_access_key": "Secret access key",
           "bucket": "Bucket name",
+          "region": "Region",
           "endpoint_url": "Endpoint URL",
           "prefix": "Prefix"
         },

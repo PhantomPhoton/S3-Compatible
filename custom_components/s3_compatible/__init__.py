@@ -18,6 +18,7 @@ from .const import (
     CONF_ACCESS_KEY_ID,
     CONF_BUCKET,
     CONF_ENDPOINT_URL,
+    CONF_REGION,
     CONF_SECRET_ACCESS_KEY,
     DATA_BACKUP_AGENT_LISTENERS,
     DOMAIN,
@@ -37,6 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: S3ConfigEntry) -> bool:
         async with get_session().create_client(
             "s3",
             endpoint_url=data.get(CONF_ENDPOINT_URL),
+            region_name=data.get(CONF_REGION),
             aws_secret_access_key=data[CONF_SECRET_ACCESS_KEY],
             aws_access_key_id=data[CONF_ACCESS_KEY_ID],
             config=BOTO_CONFIG,
