@@ -23,6 +23,7 @@ from .const import (
     BOTO_CONFIG,
     CONF_BUCKET,
     CONF_PREFIX,
+    CONF_REGION,
     DATA_BACKUP_AGENT_LISTENERS,
     DOMAIN,
     CONF_ACCESS_KEY_ID,
@@ -113,6 +114,7 @@ class S3BackupAgent(BackupAgent):
             secret_key=entry.data[CONF_SECRET_ACCESS_KEY],
         )
         self._endpoint_url = entry.data.get(CONF_ENDPOINT_URL)
+        self._region = entry.data.get(CONF_REGION)
 
         self._bucket: str = entry.data[CONF_BUCKET]
         self._prefix: str = entry.data.get(CONF_PREFIX, "")
@@ -126,6 +128,7 @@ class S3BackupAgent(BackupAgent):
         return self._session.create_client(
             "s3",
             endpoint_url=self._endpoint_url,
+            region_name=self._region,
             config=BOTO_CONFIG,
         )
 
