@@ -372,6 +372,10 @@ class S3BackupAgent(BackupAgent):
                         err,
                     )
                     continue
+                # If the user has no addons backed up, set this to an empty list
+                # Should fix #18
+                if "addons" not in metadata_json:
+                    metadata_json["addons"] = []
                 backup = AgentBackup.from_dict(metadata_json)
                 backups[backup.backup_id] = backup
 
