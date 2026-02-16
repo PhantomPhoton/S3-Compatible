@@ -20,6 +20,7 @@ from .const import (
     CONF_ENDPOINT_URL,
     CONF_REGION,
     CONF_SECRET_ACCESS_KEY,
+    CONF_VERIFY,
     DATA_BACKUP_AGENT_LISTENERS,
     DOMAIN,
 )
@@ -42,6 +43,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: S3ConfigEntry) -> bool:
             aws_secret_access_key=data[CONF_SECRET_ACCESS_KEY],
             aws_access_key_id=data[CONF_ACCESS_KEY_ID],
             config=BOTO_CONFIG,
+            verify=data.get(CONF_VERIFY, None) if data.get(CONF_VERIFY, None) != "" else None,
         ) as client:
             await client.head_bucket(Bucket=data[CONF_BUCKET])
     except ClientError as err:

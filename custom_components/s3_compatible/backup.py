@@ -29,6 +29,7 @@ from .const import (
     CONF_ACCESS_KEY_ID,
     CONF_SECRET_ACCESS_KEY,
     CONF_ENDPOINT_URL,
+    CONF_VERIFY,
 )
 
 if TYPE_CHECKING:
@@ -118,6 +119,7 @@ class S3BackupAgent(BackupAgent):
 
         self._bucket: str = entry.data[CONF_BUCKET]
         self._prefix: str = entry.data.get(CONF_PREFIX, "")
+        self._verify: str = entry.data.get(CONF_VERIFY, None)
 
         self.name = entry.title
         self.unique_id = entry.entry_id
@@ -130,6 +132,7 @@ class S3BackupAgent(BackupAgent):
             endpoint_url=self._endpoint_url,
             region_name=self._region,
             config=BOTO_CONFIG,
+            verify=self._verify if self._verify != "" else None,
         )
 
     @handle_boto_errors

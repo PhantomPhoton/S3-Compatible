@@ -24,6 +24,7 @@ from .const import (
     CONF_SECRET_ACCESS_KEY,
     CONF_PREFIX,
     CONF_REGION,
+    CONF_VERIFY,
     DEFAULT_ENDPOINT_URL,
     DEFAULT_REGION,
     DESCRIPTION_AWS_S3_DOCS_URL,
@@ -40,6 +41,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_BUCKET): cv.string,
         vol.Required(CONF_REGION, default=DEFAULT_REGION): cv.string,
         vol.Optional(CONF_PREFIX, default=""): cv.string,
+        vol.Optional(CONF_VERIFY, default=""): cv.string,
         vol.Required(CONF_ENDPOINT_URL, default=DEFAULT_ENDPOINT_URL): TextSelector(
             config=TextSelectorConfig(type=TextSelectorType.URL)
         ),
@@ -72,6 +74,7 @@ class S3ConfigFlow(ConfigFlow, domain=DOMAIN):
                     aws_secret_access_key=user_input[CONF_SECRET_ACCESS_KEY],
                     aws_access_key_id=user_input[CONF_ACCESS_KEY_ID],
                     config=BOTO_CONFIG,
+                    verify=user_input.get(CONF_VERIFY, None) if user_input.get(CONF_VERIFY, None) != "" else None,
                 ) as client:
                     await client.head_bucket(Bucket=user_input[CONF_BUCKET])
             except ClientError:

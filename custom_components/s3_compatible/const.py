@@ -14,6 +14,7 @@ CONF_ENDPOINT_URL = "endpoint_url"
 CONF_BUCKET = "bucket"
 CONF_PREFIX = "prefix"
 CONF_REGION = "region"
+CONF_VERIFY = "verify"
 
 AWS_DOMAIN = "amazonaws.com"
 DEFAULT_REGION = "us-east-1"
