@@ -25,6 +25,8 @@
           "bucket": "Bucket must already exist and be writable by the provided credentials.",
           "endpoint_url": "Endpoint URL provided to [Boto3 Session]({boto3_docs_url}). Region-specific [AWS S3 endpoints]({aws_s3_docs_url}) are available in their docs.",
           "secret_access_key": "Secret access key to connect to AWS S3 API",
+          "region": "For most self-hosted solutions, this can be set to anything you want and is unused",
+          "prefix": "Prefix to be added to every key. This can be used to emulate a directory layout with 'foo/'",
           "verify": "This is only used if you are using a custom CA for the S3 host. Most people will want to leave this blank"
         },
         "title": "Add AWS S3 bucket"
