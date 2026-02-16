@@ -8,13 +8,15 @@
           "bucket": "Bucket name",
           "region": "Region",
           "endpoint_url": "Endpoint URL",
-          "prefix": "Prefix"
+          "prefix": "Prefix",
+          "verify": "Path to a pem file"
         },
         "data_description": {
           "access_key_id": "Access key ID to connect to AWS S3 API",
           "secret_access_key": "Secret access key to connect to AWS S3 API",
           "bucket": "Bucket must already exist and be writable by the provided credentials.",
-          "endpoint_url": "Endpoint URL provided to [Boto3 Session]({boto3_docs_url}). Region-specific [AWS S3 endpoints]({aws_s3_docs_url}) are available in their docs."
+          "endpoint_url": "Endpoint URL provided to [Boto3 Session]({boto3_docs_url}). Region-specific [AWS S3 endpoints]({aws_s3_docs_url}) are available in their docs.",
+          "verify": "This is only used if you are using a custom CA for the S3 host. Most people will want to leave this blank"
         },
         "title": "Add AWS S3 bucket"
       }
