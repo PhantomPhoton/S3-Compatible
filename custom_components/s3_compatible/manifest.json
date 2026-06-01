@@ -12,7 +12,7 @@
   "loggers": ["aiobotocore"],
   "quality_scale": "bronze",
   "requirements": [
-    "aiobotocore==3.4.0"
+    "aiobotocore>=3.4.2"
   ],
   "version": "1.0.6"
 }
