@@ -5,16 +5,16 @@ from __future__ import annotations
 import logging
 from typing import cast
 
-from aiobotocore.client import AioBaseClient as S3Client
-from aiobotocore.session import get_session
-from botocore.exceptions import ClientError, ConnectionError, ParamValidationError
+from typing import Any
+
+from .s3rest import create_client
+from .exceptions import ClientError, ConnectionError, ParamValidationError
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 
 from .const import (
-    BOTO_CONFIG,
     CONF_ACCESS_KEY_ID,
     CONF_BUCKET,
     CONF_ENDPOINT_URL,
@@ -25,7 +25,7 @@ from .const import (
     DOMAIN,
 )
 
-type S3ConfigEntry = ConfigEntry[S3Client]
+type S3ConfigEntry = ConfigEntry[Any]
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,13 +36,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: S3ConfigEntry) -> bool:
 
     data = cast("dict", entry.data)
     try:
-        async with get_session().create_client(
+        async with create_client(
             "s3",
             endpoint_url=data.get(CONF_ENDPOINT_URL),
             region_name=data.get(CONF_REGION),
             aws_secret_access_key=data[CONF_SECRET_ACCESS_KEY],
             aws_access_key_id=data[CONF_ACCESS_KEY_ID],
-            config=BOTO_CONFIG,
             verify=data.get(CONF_VERIFY, None) if data.get(CONF_VERIFY, None) != "" else None,
         ) as client:
             await client.head_bucket(Bucket=data[CONF_BUCKET])

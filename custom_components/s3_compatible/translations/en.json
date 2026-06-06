@@ -7,7 +7,8 @@
       "cannot_connect": "Cannot connect to endpoint",
       "invalid_bucket_name": "Invalid bucket name",
       "invalid_credentials": "Bucket cannot be accessed using provided combination of access key ID and secret access key",
-      "invalid_endpoint_url": "Invalid endpoint URL. Please make sure it's a valid AWS S3 endpoint URL."
+      "invalid_endpoint_url": "Invalid endpoint URL. Please make sure it's a valid AWS S3 endpoint URL.",
+      "wrong_region": "Bucket is in a different region ({region})"
     },
     "step": {
       "user": {
