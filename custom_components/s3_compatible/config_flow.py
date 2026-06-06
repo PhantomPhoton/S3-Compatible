@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from aiobotocore.session import get_session
-from botocore.exceptions import ClientError, ConnectionError, ParamValidationError
+from .s3rest import create_client
+from .exceptions import ClientError, ConnectionError, ParamValidationError
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
@@ -17,7 +18,6 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
-    BOTO_CONFIG,
     CONF_ACCESS_KEY_ID,
     CONF_BUCKET,
     CONF_ENDPOINT_URL,
@@ -57,31 +57,39 @@ class S3ConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle a flow initiated by the user."""
         errors: dict[str, str] = {}
+        description_placeholders = {
+             "aws_s3_docs_url": DESCRIPTION_AWS_S3_DOCS_URL,
+             "boto3_docs_url": DESCRIPTION_BOTO3_DOCS_URL,
+         }
 
         if user_input is not None:
             self._async_abort_entries_match(
-                {
+                 {
                     CONF_BUCKET: user_input[CONF_BUCKET],
                     CONF_ENDPOINT_URL: user_input[CONF_ENDPOINT_URL],
-                }
-            )
+                 }
+             )
 
             try:
-                async with get_session().create_client(
-                    "s3",
+                async with create_client(
+                     "s3",
                     endpoint_url=user_input.get(CONF_ENDPOINT_URL),
                     region_name=user_input.get(CONF_REGION),
                     aws_secret_access_key=user_input[CONF_SECRET_ACCESS_KEY],
                     aws_access_key_id=user_input[CONF_ACCESS_KEY_ID],
-                    config=BOTO_CONFIG,
                     verify=user_input.get(CONF_VERIFY, None) if user_input.get(CONF_VERIFY, None) != "" else None,
-                ) as client:
+                 ) as client:
                     await client.head_bucket(Bucket=user_input[CONF_BUCKET])
             except ClientError:
                 errors["base"] = "invalid_credentials"
             except ParamValidationError as err:
                 if "Invalid bucket name" in str(err):
                     errors[CONF_BUCKET] = "invalid_bucket_name"
+                elif "region" in str(err).lower():
+                    errors["base"] = "wrong_region"
+                    match = re.search(r"region '([^']+)'", str(err))
+                    if match:
+                        description_placeholders["region"] = match.group(1)
             except ValueError:
                 errors[CONF_ENDPOINT_URL] = "invalid_endpoint_url"
             except ConnectionError:
@@ -89,16 +97,13 @@ class S3ConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 return self.async_create_entry(
                     title=user_input[CONF_BUCKET], data=user_input
-                )
+                 )
 
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(
                 STEP_USER_DATA_SCHEMA, user_input
-            ),
+             ),
             errors=errors,
-            description_placeholders={
-                "aws_s3_docs_url": DESCRIPTION_AWS_S3_DOCS_URL,
-                "boto3_docs_url": DESCRIPTION_BOTO3_DOCS_URL,
-            },
-        )
+            description_placeholders=description_placeholders,
+         )

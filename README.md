@@ -8,18 +8,19 @@ A Home Assistant custom integration to support uploading backups to S3 compatibl
 
 ## Known Working Services
 
-* [Amazon S3](https://aws.amazon.com/s3/)
+* [Amazon S3](https://aws.amazon.com/s3)
 * [MinIO](https://min.io)
 * [MEGA S4](https://mega.io/objectstorage)
-* [Scaleway Object Storage](https://www.scaleway.com/en/object-storage/)
+* [Scaleway Object Storage](https://www.scaleway.com/en/object-storage)
 * [Storj](https://www.storj.io/cloud-object-storage)
-* [Cloudflare R2](https://www.cloudflare.com/developer-platform/products/r2/)
+* [Cloudflare R2](https://www.cloudflare.com/developer-platform/products/r2)
 * [Backblaze](https://www.backblaze.com/cloud-storage)
-* [IDrive® e2](https://www.idrive.com/s3-storage-e2/)
-* [Hetzner Object Storage](https://www.hetzner.com/storage/object-storage/)
+* [IDrive® e2](https://www.idrive.com/s3-storage-e2)
+* [Hetzner Object Storage](https://www.hetzner.com/storage/object-storage)
 * [SeaweedFS](https://seaweedfs.com)
-* [e24cloud](https://www.e24cloud.com/en/api-e24files/)
-* [OVH](https://www.ovhcloud.com/)
+* [e24cloud](https://www.e24cloud.com/en/api-e24files)
+* [OVH](https://www.ovhcloud.com)
+* [Garage](https://garagehq.deuxfleurs.fr) - Requires region set to "garage"
 
 ## Installation
 
