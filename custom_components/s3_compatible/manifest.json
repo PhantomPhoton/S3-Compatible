@@ -9,10 +9,8 @@
   "documentation": "https://github.com/PhantomPhoton/S3-Compatible",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/PhantomPhoton/S3-Compatible/issues",
-  "loggers": ["aiobotocore"],
+  "loggers":  ["custom_components.s3_compatible"],
   "quality_scale": "bronze",
-  "requirements": [
-    "aiobotocore>=3.4.2"
-  ],
-  "version": "1.0.8"
+  "requirements": ["requests-aws4auth>=1.2"],
+  "version": "2.0.0"
 }

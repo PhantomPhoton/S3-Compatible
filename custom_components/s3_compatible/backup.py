@@ -7,8 +7,8 @@ from collections.abc import AsyncIterator, Callable, Coroutine
 from time import time
 from typing import Any, TYPE_CHECKING
 
-from aiobotocore.session import get_session
-from botocore.exceptions import BotoCoreError
+from .s3rest import create_client
+from .exceptions import BotoCoreError
 
 from homeassistant.components.backup import (
     AgentBackup,
@@ -20,7 +20,6 @@ from homeassistant.components.backup import (
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
-    BOTO_CONFIG,
     CONF_BUCKET,
     CONF_PREFIX,
     CONF_REGION,
@@ -34,7 +33,7 @@ from .const import (
 
 if TYPE_CHECKING:
     from . import S3ConfigEntry
-    from aiobotocore.session import ClientCreatorContext
+    from typing import Any as ClientCreatorContext
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -109,11 +108,8 @@ class S3BackupAgent(BackupAgent):
     def __init__(self, hass: HomeAssistant, entry: "S3ConfigEntry") -> None:
         """Initialize the S3 agent."""
         super().__init__()
-        self._session = get_session()
-        self._session.set_credentials(
-            access_key=entry.data[CONF_ACCESS_KEY_ID],
-            secret_key=entry.data[CONF_SECRET_ACCESS_KEY],
-        )
+        self._access_key = entry.data[CONF_ACCESS_KEY_ID]
+        self._secret_key = entry.data[CONF_SECRET_ACCESS_KEY]
         self._endpoint_url = entry.data.get(CONF_ENDPOINT_URL)
         self._region = entry.data.get(CONF_REGION)
 
@@ -127,11 +123,12 @@ class S3BackupAgent(BackupAgent):
         self._cache_expiration = time()
 
     def _create_client(self) -> "ClientCreatorContext":
-        return self._session.create_client(
+        return create_client(
             "s3",
             endpoint_url=self._endpoint_url,
             region_name=self._region,
-            config=BOTO_CONFIG,
+            aws_access_key_id=self._access_key,
+            aws_secret_access_key=self._secret_key,
             verify=self._verify if self._verify != "" else None,
         )
 

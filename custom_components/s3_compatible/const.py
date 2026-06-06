@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from typing import Final
-from botocore.config import Config
+# No botocore dependency required; keep a placeholder for compatibility
 
 from homeassistant.util.hass_dict import HassKey
 
@@ -26,8 +26,3 @@ DATA_BACKUP_AGENT_LISTENERS: HassKey[list[Callable[[], None]]] = HassKey(
 
 DESCRIPTION_AWS_S3_DOCS_URL = "https://docs.aws.amazon.com/general/latest/gr/s3.html"
 DESCRIPTION_BOTO3_DOCS_URL = "https://boto3.amazonaws.com/v1/documentation/api/latest/reference/core/session.html"
-
-BOTO_CONFIG = Config(
-    request_checksum_calculation="when_required",
-    response_checksum_validation="when_required",
-)
