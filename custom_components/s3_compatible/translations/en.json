@@ -1,7 +1,8 @@
 {
   "config": {
     "abort": {
-      "already_configured": "Account is already configured"
+      "already_configured": "Account is already configured",
+      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
     },
     "error": {
       "cannot_connect": "Cannot connect to endpoint",
@@ -24,13 +25,34 @@
         "data_description": {
           "access_key_id": "Access key ID to connect to AWS S3 API",
           "bucket": "Bucket must already exist and be writable by the provided credentials.",
-          "endpoint_url": "Endpoint URL provided to [Boto3 Session]({boto3_docs_url}). Region-specific [AWS S3 endpoints]({aws_s3_docs_url}) are available in their docs.",
+          "endpoint_url": "Endpoint URL for the S3-compatible service.",
           "secret_access_key": "Secret access key to connect to AWS S3 API",
           "region": "For most self-hosted solutions, this can be set to anything you want and is unused",
           "prefix": "Prefix to be added to every key. This can be used to emulate a directory layout with 'foo/'",
           "verify": "This is only used if you are using a custom CA for the S3 host. Most people will want to leave this blank"
         },
         "title": "Add AWS S3 bucket"
+      },
+      "reconfigure": {
+        "data": {
+          "access_key_id": "Access key ID",
+          "bucket": "Bucket name",
+          "endpoint_url": "Endpoint URL",
+          "secret_access_key": "Secret access key",
+          "region": "Region",
+          "prefix": "Prefix",
+          "verify": "Path to a pem file"
+        },
+        "data_description": {
+          "access_key_id": "Access key ID to connect to AWS S3 API",
+          "bucket": "Bucket must already exist and be writable by the provided credentials.",
+          "endpoint_url": "Endpoint URL for the S3-compatible service.",
+          "secret_access_key": "Secret access key to connect to AWS S3 API",
+          "region": "For most self-hosted solutions, this can be set to anything you want and is unused",
+          "prefix": "Prefix to be added to every key. This can be used to emulate a directory layout with 'foo/'",
+          "verify": "This is only used if you are using a custom CA for the S3 host. Most people will want to leave this blank"
+        },
+        "title": "Reconfigure S3 bucket"
       }
     }
   },
