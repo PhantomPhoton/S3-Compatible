@@ -12,5 +12,5 @@
   "loggers":  ["custom_components.s3_compatible"],
   "quality_scale": "bronze",
   "requirements": [],
-  "version": "2.1.0"
+  "version": "2.1.1"
 }
