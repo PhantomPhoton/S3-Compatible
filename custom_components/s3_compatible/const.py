@@ -2,8 +2,6 @@
 
 from collections.abc import Callable
 from typing import Final
-# No botocore dependency required; keep a placeholder for compatibility
-
 from homeassistant.util.hass_dict import HassKey
 
 DOMAIN: Final = "s3_compatible"

@@ -16,9 +16,10 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 import requests
-from requests_aws4auth import AWS4Auth
+from requests.exceptions import ConnectionError as RequestsConnectionError
 
-from .exceptions import ConnectionError, ParamValidationError
+from .exceptions import ClientError, ConnectionError, ParamValidationError
+from .sigv4 import sign_request
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,22 +77,31 @@ class S3RestClient:
             raise ConnectionError("No AWS credentials provided")
 
         url = self._build_path(bucket, key)
-        auth = AWS4Auth(self.access_key, self.secret_key, self.region, self.service_name)
+        payload_bytes = payload or b""
 
-        hdrs: Dict[str, str] = {}
-        if headers:
-            hdrs.update({k.lower(): v for k, v in headers.items()})
-
-        response = requests.request(
-            method,
-            url,
+        signed_headers, request_url = sign_request(
+            method=method,
+            url=url,
+            access_key=self.access_key,
+            secret_key=self.secret_key,
+            region=self.region,
+            service=self.service_name,
             params=params,
-            headers=hdrs,
-            data=payload,
-            auth=auth,
-            verify=self.verify,
-            allow_redirects=False,
+            headers=headers,
+            payload=payload_bytes,
         )
+
+        try:
+            response = requests.request(
+                method,
+                request_url,
+                headers=signed_headers,
+                data=payload_bytes if payload_bytes else None,
+                verify=self.verify,
+                allow_redirects=False,
+            )
+        except RequestsConnectionError as err:
+            raise ConnectionError(str(err)) from err
 
         _LOGGER.info("_request response status_code=%d", response.status_code)
 
@@ -106,7 +116,18 @@ class S3RestClient:
                     f"Update your configuration to use region '{correct_region}'."
                 )
 
-        response.raise_for_status()
+        if response.status_code >= 400:
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": str(response.status_code),
+                        "Message": response.reason or "",
+                    },
+                    "ResponseMetadata": {"HTTPStatusCode": response.status_code},
+                },
+                operation or method,
+            )
+
         return response
 
     def _build_path(self, bucket: str = "", key: str = "") -> str:
