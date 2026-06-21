@@ -11,6 +11,6 @@
   "issue_tracker": "https://github.com/PhantomPhoton/S3-Compatible/issues",
   "loggers":  ["custom_components.s3_compatible"],
   "quality_scale": "bronze",
-  "requirements": ["requests-aws4auth>=1.2"],
+  "requirements": [],
   "version": "2.1.0"
 }
