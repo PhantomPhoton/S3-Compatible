@@ -335,6 +335,18 @@ class _Body:
         self._pos += len(chunk)
         return chunk
 
+    def iter_chunks(self, chunk_size: int | None = None) -> "_Body":
+        """Return an async iterator over the body in chunks.
+
+        Mirrors aiobotocore/boto3 StreamingBody.iter_chunks, which Home
+        Assistant's backup download handler calls
+        (agent.async_download_backup -> Body.iter_chunks()). _Body is already
+        an async iterator, so return self.
+        """
+        if chunk_size:
+            self._chunk_size = chunk_size
+        return self
+
     async def read(self) -> bytes:
         """Read the entire body as bytes."""
         return self._content
