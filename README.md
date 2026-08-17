@@ -20,7 +20,7 @@ A Home Assistant custom integration to support uploading backups to S3 compatibl
 * [SeaweedFS](https://seaweedfs.com)
 * [e24cloud](https://www.e24cloud.com/en/api-e24files)
 * [OVH](https://www.ovhcloud.com)
-* [Garage](https://garagehq.deuxfleurs.fr) - Requires region set to "garage"
+* [Garage](https://garagehq.deuxfleurs.fr) - Region defaults to "garage"
 
 ## Installation
 
