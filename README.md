@@ -47,3 +47,9 @@ You can install this component in two ways: via [HACS](https://github.com/hacs/i
 5. Search for "S3 Compatible"
 6. Select the integration and **Follow setup workflow**
 7. Once finished, it will show up as an available backup target
+
+# My other Home Assistant custom components
+
+* [Setup Codes](https://github.com/PhantomPhoton/Setup-Codes) - Integrated database of Matter and HomeKit device Setup Codes
+* [Matter Extensions](https://github.com/PhantomPhoton/Matter-Extensions) - Provide additional Matter functionality for devices that Home Assistant does not provide yet
+  
