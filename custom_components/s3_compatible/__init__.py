@@ -18,6 +18,7 @@ from .const import (
     CONF_ACCESS_KEY_ID,
     CONF_BUCKET,
     CONF_ENDPOINT_URL,
+    CONF_PREFIX,
     CONF_REGION,
     CONF_SECRET_ACCESS_KEY,
     CONF_VERIFY,
@@ -44,7 +45,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: S3ConfigEntry) -> bool:
             aws_access_key_id=data[CONF_ACCESS_KEY_ID],
             verify=data.get(CONF_VERIFY, None) if data.get(CONF_VERIFY, None) != "" else None,
         ) as client:
-            await client.head_bucket(Bucket=data[CONF_BUCKET])
+            await client.list_objects_v2(
+                Bucket=data[CONF_BUCKET],
+                Prefix=data.get(CONF_PREFIX, ""),
+                MaxKeys=1,
+            )
     except ClientError as err:
         raise ConfigEntryError(
             translation_domain=DOMAIN,
