@@ -141,7 +141,11 @@ class S3ConfigFlow(ConfigFlow, domain=DOMAIN):
                 if user_input.get(CONF_VERIFY, None) != ""
                 else None,
             ) as client:
-                await client.head_bucket(Bucket=user_input[CONF_BUCKET])
+                await client.list_objects_v2(
+                    Bucket=user_input[CONF_BUCKET],
+                    Prefix=user_input.get(CONF_PREFIX, ""),
+                    MaxKeys=1,
+                )
         except ClientError:
             errors["base"] = "invalid_credentials"
         except ParamValidationError as err:
