@@ -189,11 +189,19 @@ class S3RestClient:
         self,
         Bucket: str,
         Prefix: str = "",
+        MaxKeys: Optional[int] = None,
     ) -> Dict[str, Any]:
-        _LOGGER.info("list_objects_v2 called Bucket=%s Prefix=%s", Bucket, Prefix)
+        _LOGGER.info(
+            "list_objects_v2 called Bucket=%s Prefix=%s MaxKeys=%s",
+            Bucket,
+            Prefix,
+            MaxKeys,
+        )
         params: Dict[str, str] = {"list-type": "2"}
         if Prefix:
             params["prefix"] = Prefix
+        if MaxKeys is not None:
+            params["max-keys"] = str(MaxKeys)
         resp = self._request("GET", bucket=Bucket, params=params, operation="ListObjectsV2")
         
         root = ET.fromstring(resp.content)
