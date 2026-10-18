@@ -16,12 +16,18 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 import requests
+from requests.adapters import HTTPAdapter
 from requests.exceptions import ConnectionError as RequestsConnectionError
 
 from .exceptions import ClientError, ConnectionError, ParamValidationError
 from .sigv4 import sign_request
 
 _LOGGER = logging.getLogger(__name__)
+
+
+# Maximum number of pooled keep-alive connections per client. Must be at
+# least the number of concurrent part uploads used by the backup agent.
+HTTP_POOL_SIZE = 16
 
 
 class S3RestClient:
@@ -42,6 +48,15 @@ class S3RestClient:
         self.verify = verify
         self.access_key = aws_access_key_id
         self.secret_key = aws_secret_access_key
+
+        # Reuse one HTTP session (keep-alive) for every request made by this
+        # client. Without this each request opens a new TCP + TLS connection,
+        # which badly limits multipart upload throughput. The pool is sized
+        # for concurrent part uploads from executor threads.
+        self._session = requests.Session()
+        adapter = HTTPAdapter(pool_connections=1, pool_maxsize=HTTP_POOL_SIZE)
+        self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
 
         _LOGGER.info(
             "Initialized S3RestClient endpoint=%s region=%s verify=%s access_key=%s secret_key=%s",
@@ -92,7 +107,7 @@ class S3RestClient:
         )
 
         try:
-            response = requests.request(
+            response = self._session.request(
                 method,
                 request_url,
                 headers=signed_headers,
@@ -319,6 +334,10 @@ class S3RestClient:
             operation="AbortMultipartUpload",
         )
 
+    def close(self) -> None:
+        """Close the underlying HTTP session and its pooled connections."""
+        self._session.close()
+
     def delete_object(self, Bucket: str, Key: str) -> Dict[str, Any]:
         _LOGGER.info("delete_object called Bucket=%s Key=%s", Bucket, Key)
         resp = self._request("DELETE", bucket=Bucket, key=Key, operation="DeleteObject")
@@ -401,4 +420,5 @@ async def create_client(service_name: str = "s3", **kwargs: Any) -> Any:
     try:
         yield _Proxy(client)
     finally:
-        pass
+        # Release pooled connections without blocking the event loop.
+        await asyncio.get_running_loop().run_in_executor(None, client.close)
