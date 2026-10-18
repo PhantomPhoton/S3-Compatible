@@ -10,8 +10,12 @@ from .exceptions import ClientError, ConnectionError, ParamValidationError
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -25,8 +29,17 @@ from .const import (
     CONF_PREFIX,
     CONF_REGION,
     CONF_VERIFY,
+    CONF_UPLOAD_PERFORMANCE,
+    CONF_PART_SIZE_MIB,
+    CONF_MAX_CONCURRENCY,
     DEFAULT_ENDPOINT_URL,
     DEFAULT_REGION,
+    DEFAULT_PART_SIZE_MIB,
+    DEFAULT_MAX_CONCURRENCY,
+    MIN_PART_SIZE_MIB,
+    MAX_PART_SIZE_MIB,
+    MIN_CONCURRENCY,
+    MAX_CONCURRENCY,
     DOMAIN,
 )
 
@@ -45,6 +58,60 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         ),
     }
 )
+
+
+def _upload_performance_section(current: dict[str, Any] | None) -> section:
+    """Return the collapsible upload performance section, prefilled."""
+    current = current or {}
+    return section(
+        vol.Schema(
+            {
+                vol.Required(
+                    CONF_PART_SIZE_MIB,
+                    default=current.get(CONF_PART_SIZE_MIB, DEFAULT_PART_SIZE_MIB),
+                ): vol.All(
+                    NumberSelector(
+                        NumberSelectorConfig(
+                            min=MIN_PART_SIZE_MIB,
+                            max=MAX_PART_SIZE_MIB,
+                            step=1,
+                            mode=NumberSelectorMode.BOX,
+                            unit_of_measurement="MiB",
+                        )
+                    ),
+                    vol.Coerce(int),
+                ),
+                vol.Required(
+                    CONF_MAX_CONCURRENCY,
+                    default=current.get(
+                        CONF_MAX_CONCURRENCY, DEFAULT_MAX_CONCURRENCY
+                    ),
+                ): vol.All(
+                    NumberSelector(
+                        NumberSelectorConfig(
+                            min=MIN_CONCURRENCY,
+                            max=MAX_CONCURRENCY,
+                            step=1,
+                            mode=NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Coerce(int),
+                ),
+            }
+        ),
+        {"collapsed": True},
+    )
+
+
+def _build_schema(current_performance: dict[str, Any] | None) -> vol.Schema:
+    """Return the setup/reconfigure schema including the performance section."""
+    return STEP_USER_DATA_SCHEMA.extend(
+        {
+            vol.Required(CONF_UPLOAD_PERFORMANCE): _upload_performance_section(
+                current_performance
+            )
+        }
+    )
 
 
 class S3ConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -95,11 +162,13 @@ class S3ConfigFlow(ConfigFlow, domain=DOMAIN):
                     title=user_input[CONF_BUCKET], data=user_input
                 )
 
-        defaults = dict(entry.data) if entry else user_input
+        defaults = dict(entry.data) if entry else dict(user_input or {})
+        # The performance section is prefilled through its own defaults.
+        performance = defaults.pop(CONF_UPLOAD_PERFORMANCE, None)
         return self.async_show_form(
             step_id=step_id,
             data_schema=self.add_suggested_values_to_schema(
-                STEP_USER_DATA_SCHEMA, defaults
+                _build_schema(performance), defaults
             ),
             errors=errors,
             description_placeholders=description_placeholders,
