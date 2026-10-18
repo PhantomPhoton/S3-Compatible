@@ -30,6 +30,15 @@ from .const import (
     CONF_SECRET_ACCESS_KEY,
     CONF_ENDPOINT_URL,
     CONF_VERIFY,
+    CONF_UPLOAD_PERFORMANCE,
+    CONF_PART_SIZE_MIB,
+    CONF_MAX_CONCURRENCY,
+    DEFAULT_PART_SIZE_MIB,
+    DEFAULT_MAX_CONCURRENCY,
+    MIN_PART_SIZE_MIB,
+    MAX_PART_SIZE_MIB,
+    MIN_CONCURRENCY,
+    MAX_CONCURRENCY,
 )
 
 if TYPE_CHECKING:
@@ -42,19 +51,10 @@ CACHE_TTL = 300
 
 # S3 part size requirements: 5 MiB to 5 GiB per part
 # https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
-# Backups smaller than this threshold are uploaded with a single PUT.
-MULTIPART_MIN_PART_SIZE_BYTES = 20 * 2**20
-
-# Size of each multipart part. 64 MiB matches Storj's segment size and is a
-# good general default: it keeps the number of requests low (~25 parts for a
-# 1.6 GB backup) while staying far below the 10,000-part limit.
-# All parts except the last are exactly this size (Mega S4 requires
-# equal-sized parts).
-MULTIPART_PART_SIZE_BYTES = 64 * 2**20
-
-# Number of parts uploaded concurrently. Peak memory use is roughly
-# (MULTIPART_MAX_CONCURRENCY + 1) * MULTIPART_PART_SIZE_BYTES.
-MULTIPART_MAX_CONCURRENCY = 4
+# Part size and the number of parts uploaded in parallel are configurable
+# (see const.py). All parts except the last are exactly the configured size
+# (Mega S4 requires equal-sized parts). Each part is held in memory, so peak
+# memory use is roughly (max_concurrency + 1) * part_size.
 
 
 def handle_boto_errors[T](
@@ -128,6 +128,19 @@ class S3BackupAgent(BackupAgent):
         self._prefix: str = entry.data.get(CONF_PREFIX, "")
         self._verify: str = entry.data.get(CONF_VERIFY, None)
 
+        performance = entry.data.get(CONF_UPLOAD_PERFORMANCE) or {}
+        part_size_mib = int(
+            performance.get(CONF_PART_SIZE_MIB, DEFAULT_PART_SIZE_MIB)
+        )
+        part_size_mib = min(max(part_size_mib, MIN_PART_SIZE_MIB), MAX_PART_SIZE_MIB)
+        self._part_size: int = part_size_mib * 2**20
+        max_concurrency = int(
+            performance.get(CONF_MAX_CONCURRENCY, DEFAULT_MAX_CONCURRENCY)
+        )
+        self._max_concurrency: int = min(
+            max(max_concurrency, MIN_CONCURRENCY), MAX_CONCURRENCY
+        )
+
         self.name = entry.title
         self.unique_id = entry.entry_id
         self._backup_cache: dict[str, AgentBackup] = {}
@@ -176,7 +189,7 @@ class S3BackupAgent(BackupAgent):
         tar_filename, metadata_filename = suggested_filenames(backup, self._prefix)
 
         try:
-            if backup.size < MULTIPART_MIN_PART_SIZE_BYTES:
+            if backup.size < self._part_size:
                 await self._upload_simple(tar_filename, open_stream)
             else:
                 await self._upload_multipart(tar_filename, open_stream)
@@ -226,14 +239,20 @@ class S3BackupAgent(BackupAgent):
         """Upload a large file using a concurrent multipart upload.
 
         Parts are read from the stream sequentially and uploaded in parallel
-        (up to MULTIPART_MAX_CONCURRENCY at a time) over a shared keep-alive
-        HTTP session, so reading the backup and uploading overlap.
+        (up to the configured max concurrency) over a shared keep-alive HTTP
+        session, so reading the backup and uploading overlap. With the
+        default concurrency of 1 this behaves like a sequential upload.
 
         :param tar_filename: The target filename for the backup.
         :param open_stream: A function returning an async iterator that yields bytes.
         """
-        _LOGGER.info("Starting multipart upload for %s", tar_filename)
-        part_size = MULTIPART_PART_SIZE_BYTES
+        part_size = self._part_size
+        _LOGGER.info(
+            "Starting multipart upload for %s (part size %d MiB, concurrency %d)",
+            tar_filename,
+            part_size // 2**20,
+            self._max_concurrency,
+        )
 
         async with self._create_client() as client:
             multipart_upload = await client.create_multipart_upload(
@@ -242,7 +261,7 @@ class S3BackupAgent(BackupAgent):
             )
 
             upload_id = multipart_upload["UploadId"]
-            slots = asyncio.Semaphore(MULTIPART_MAX_CONCURRENCY)
+            slots = asyncio.Semaphore(self._max_concurrency)
             tasks: list[asyncio.Task[dict[str, Any]]] = []
 
             async def _upload_part(part_number: int, body: bytes) -> dict[str, Any]:
