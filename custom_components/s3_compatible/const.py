@@ -14,6 +14,20 @@ CONF_PREFIX = "prefix"
 CONF_REGION = "region"
 CONF_VERIFY = "verify"
 
+# Upload performance settings (stored in a nested "upload_performance" dict).
+CONF_UPLOAD_PERFORMANCE = "upload_performance"
+CONF_PART_SIZE_MIB = "part_size_mib"
+CONF_MAX_CONCURRENCY = "max_concurrency"
+
+# Defaults match the original behaviour: 20 MiB parts, one at a time.
+# Peak memory during an upload is roughly (max_concurrency + 1) * part_size.
+DEFAULT_PART_SIZE_MIB = 20
+DEFAULT_MAX_CONCURRENCY = 1
+MIN_PART_SIZE_MIB = 5  # S3 minimum part size
+MAX_PART_SIZE_MIB = 256
+MIN_CONCURRENCY = 1
+MAX_CONCURRENCY = 8
+
 AWS_DOMAIN = "amazonaws.com"
 DEFAULT_REGION = "us-east-1"
 DEFAULT_ENDPOINT_URL = f"https://s3.{DEFAULT_REGION}.{AWS_DOMAIN}/"
