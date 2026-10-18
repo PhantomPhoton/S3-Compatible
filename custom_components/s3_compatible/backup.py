@@ -1,5 +1,6 @@
 """Backup platform for the S3 Compatible integration."""
 
+import asyncio
 import functools
 import json
 import logging
@@ -41,9 +42,19 @@ CACHE_TTL = 300
 
 # S3 part size requirements: 5 MiB to 5 GiB per part
 # https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
-# We set the threshold to 20 MiB to avoid too many parts.
-# Note that each part is allocated in the memory.
+# Backups smaller than this threshold are uploaded with a single PUT.
 MULTIPART_MIN_PART_SIZE_BYTES = 20 * 2**20
+
+# Size of each multipart part. 64 MiB matches Storj's segment size and is a
+# good general default: it keeps the number of requests low (~25 parts for a
+# 1.6 GB backup) while staying far below the 10,000-part limit.
+# All parts except the last are exactly this size (Mega S4 requires
+# equal-sized parts).
+MULTIPART_PART_SIZE_BYTES = 64 * 2**20
+
+# Number of parts uploaded concurrently. Peak memory use is roughly
+# (MULTIPART_MAX_CONCURRENCY + 1) * MULTIPART_PART_SIZE_BYTES.
+MULTIPART_MAX_CONCURRENCY = 4
 
 
 def handle_boto_errors[T](
@@ -212,12 +223,17 @@ class S3BackupAgent(BackupAgent):
         tar_filename: str,
         open_stream: Callable[[], Coroutine[Any, Any, AsyncIterator[bytes]]],
     ):
-        """Upload a large file using multipart upload.
+        """Upload a large file using a concurrent multipart upload.
+
+        Parts are read from the stream sequentially and uploaded in parallel
+        (up to MULTIPART_MAX_CONCURRENCY at a time) over a shared keep-alive
+        HTTP session, so reading the backup and uploading overlap.
 
         :param tar_filename: The target filename for the backup.
         :param open_stream: A function returning an async iterator that yields bytes.
         """
         _LOGGER.info("Starting multipart upload for %s", tar_filename)
+        part_size = MULTIPART_PART_SIZE_BYTES
 
         async with self._create_client() as client:
             multipart_upload = await client.create_multipart_upload(
@@ -226,56 +242,53 @@ class S3BackupAgent(BackupAgent):
             )
 
             upload_id = multipart_upload["UploadId"]
-            try:
-                parts = []
-                part_number = 1
-                buffer_size = 0  # bytes
-                buffer: bytearray = bytearray()
+            slots = asyncio.Semaphore(MULTIPART_MAX_CONCURRENCY)
+            tasks: list[asyncio.Task[dict[str, Any]]] = []
 
-                stream = await open_stream()
-                async for chunk in stream:
-                    buffer.extend(chunk)
-                    buffer_size = len(buffer)
-
-                    # If buffer size meets minimum part size, upload it as a part
-                    if buffer_size >= MULTIPART_MIN_PART_SIZE_BYTES:
-                        # Mega S4 requires all parts to be exactly the same size
-                        overflow = buffer[MULTIPART_MIN_PART_SIZE_BYTES:]
-                        buffer = buffer[:MULTIPART_MIN_PART_SIZE_BYTES]
-                        buffer_size = len(buffer)
-
-                        _LOGGER.info(
-                            "Uploading part number %d, size %d",
-                            part_number,
-                            buffer_size,
-                        )
-                        part = await client.upload_part(
-                            Bucket=self._bucket,
-                            Key=tar_filename,
-                            PartNumber=part_number,
-                            UploadId=upload_id,
-                            Body=buffer,
-                        )
-                        parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
-                        part_number += 1
-                        buffer = overflow
-                        buffer_size = len(buffer)
-
-                # Upload the final buffer as the last part (no minimum size requirement)
-                if buffer:
+            async def _upload_part(part_number: int, body: bytes) -> dict[str, Any]:
+                try:
                     _LOGGER.info(
-                        "Uploading final part number %d, size %d",
-                        part_number,
-                        buffer_size,
+                        "Uploading part number %d, size %d", part_number, len(body)
                     )
                     part = await client.upload_part(
                         Bucket=self._bucket,
                         Key=tar_filename,
                         PartNumber=part_number,
                         UploadId=upload_id,
-                        Body=buffer,
+                        Body=body,
                     )
-                    parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
+                    return {"PartNumber": part_number, "ETag": part["ETag"]}
+                finally:
+                    slots.release()
+
+            async def _submit(body: bytes) -> None:
+                # Wait for a free upload slot; this bounds memory use.
+                await slots.acquire()
+                # Fail fast if an earlier part has already failed.
+                for task in tasks:
+                    if task.done() and task.exception() is not None:
+                        slots.release()
+                        raise task.exception()  # type: ignore[misc]
+                tasks.append(
+                    asyncio.create_task(_upload_part(len(tasks) + 1, body))
+                )
+
+            try:
+                buffer = bytearray()
+                stream = await open_stream()
+                async for chunk in stream:
+                    buffer.extend(chunk)
+                    while len(buffer) >= part_size:
+                        body = bytes(buffer[:part_size])
+                        del buffer[:part_size]
+                        await _submit(body)
+
+                # Upload the final buffer as the last part (no minimum size).
+                if buffer:
+                    await _submit(bytes(buffer))
+                    buffer = bytearray()
+
+                parts = await asyncio.gather(*tasks)
 
                 await client.complete_multipart_upload(
                     Bucket=self._bucket,
@@ -283,8 +296,18 @@ class S3BackupAgent(BackupAgent):
                     UploadId=upload_id,
                     MultipartUpload={"Parts": parts},
                 )
+                _LOGGER.info(
+                    "Completed multipart upload for %s (%d parts)",
+                    tar_filename,
+                    len(parts),
+                )
 
-            except BotoCoreError:
+            except BaseException:
+                # Stop any in-flight part uploads, then abort the multipart
+                # upload so no orphaned parts are left in the bucket.
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
                 try:
                     await client.abort_multipart_upload(
                         Bucket=self._bucket,
