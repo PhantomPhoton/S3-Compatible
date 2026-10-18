@@ -31,7 +31,21 @@
           "prefix": "Prefix to be added to every key. This can be used to emulate a directory layout with 'foo/'",
           "verify": "This is only used if you are using a custom CA for the S3 host. Most people will want to leave this blank"
         },
-        "title": "Add AWS S3 bucket"
+        "title": "Add AWS S3 bucket",
+        "sections": {
+          "upload_performance": {
+            "name": "Upload performance",
+            "description": "Advanced. Peak memory used during an upload is roughly (parts uploaded at once + 1) x part size. The defaults (20 MiB, 1 at a time) suit any hardware, including 1-2 GB Raspberry Pis. With 4 GB+ RAM and a good upload connection try 32 MiB x 3; with 8 GB+ and fast upload try 64 MiB x 4 (64 MiB also matches Storj's segment size).",
+            "data": {
+              "part_size_mib": "Part size",
+              "max_concurrency": "Parts uploaded at once"
+            },
+            "data_description": {
+              "part_size_mib": "Size of each multipart upload part (5-256 MiB). Larger parts mean fewer requests but more memory. Default: 20.",
+              "max_concurrency": "How many parts are uploaded in parallel (1-8). More parts in parallel uses more of your upload bandwidth and more memory. Default: 1."
+            }
+          }
+        }
       },
       "reconfigure": {
         "data": {
@@ -52,7 +66,21 @@
           "prefix": "Prefix to be added to every key. This can be used to emulate a directory layout with 'foo/'",
           "verify": "This is only used if you are using a custom CA for the S3 host. Most people will want to leave this blank"
         },
-        "title": "Reconfigure S3 bucket"
+        "title": "Reconfigure S3 bucket",
+        "sections": {
+          "upload_performance": {
+            "name": "Upload performance",
+            "description": "Advanced. Peak memory used during an upload is roughly (parts uploaded at once + 1) x part size. The defaults (20 MiB, 1 at a time) suit any hardware, including 1-2 GB Raspberry Pis. With 4 GB+ RAM and a good upload connection try 32 MiB x 3; with 8 GB+ and fast upload try 64 MiB x 4 (64 MiB also matches Storj's segment size).",
+            "data": {
+              "part_size_mib": "Part size",
+              "max_concurrency": "Parts uploaded at once"
+            },
+            "data_description": {
+              "part_size_mib": "Size of each multipart upload part (5-256 MiB). Larger parts mean fewer requests but more memory. Default: 20.",
+              "max_concurrency": "How many parts are uploaded in parallel (1-8). More parts in parallel uses more of your upload bandwidth and more memory. Default: 1."
+            }
+          }
+        }
       }
     }
   },
