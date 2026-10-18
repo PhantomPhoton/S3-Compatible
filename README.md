@@ -48,6 +48,27 @@ You can install this component in two ways: via [HACS](https://github.com/hacs/i
 6. Select the integration and **Follow setup workflow**
 7. Once finished, it will show up as an available backup target
 
+## Upload performance
+
+Large backups are uploaded in parts (S3 multipart upload). Two optional settings, in the collapsed **Upload performance** section of the setup and **Reconfigure** forms, control how fast this goes and how much memory it uses:
+
+* **Part size** (5–256 MiB, default 20): the size of each uploaded part.
+* **Parts uploaded at once** (1–8, default 1): how many parts are sent in parallel.
+
+Each part is held in memory while it uploads, so peak memory use is roughly **(parts uploaded at once + 1) × part size**. The defaults keep the original behaviour (about 40 MB) and are safe on any hardware.
+
+| Hardware / connection | Suggested settings | Approx. peak memory |
+| --- | --- | --- |
+| Raspberry Pi or 1–2 GB RAM, or a slow upload connection | 20 MiB × 1 (default) | ~40 MB |
+| 4 GB+ RAM (e.g. HA Green, Yellow, mini PC) with a good upload | 32 MiB × 3 | ~130 MB |
+| 8 GB+ RAM with a fast upload (hundreds of Mbit/s or more) | 64 MiB × 4 | ~320 MB |
+
+Notes:
+
+* More parts in parallel helps most on fast connections, where a single connection cannot fill the line. On a slow connection it will not make the upload finish sooner, and it uses more of your bandwidth while the backup uploads.
+* For **Storj**, 64 MiB parts match Storj's segment size and are the most efficient choice.
+* If your backup is encrypted, Home Assistant encrypts it while uploading, so CPU speed can become the limit before your connection does.
+
 # My other Home Assistant custom components
 
 * [Setup Codes](https://github.com/PhantomPhoton/Setup-Codes) - Integrated database of Matter and HomeKit device Setup Codes
