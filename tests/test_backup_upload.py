@@ -5,11 +5,35 @@ import tracemalloc
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
-from custom_components.s3_compatible.backup import S3BackupAgent
-from custom_components.s3_compatible.s3rest import _StreamingBody
-from homeassistant.components.backup import AgentBackup
+import pytest
+
+from custom_components.s3_compatible import backup as backup_module
+from custom_components.s3_compatible.backup import S3BackupAgent, with_retries
+from custom_components.s3_compatible.exceptions import ClientError
+from custom_components.s3_compatible.exceptions import ConnectionError as S3ConnectionError
+from custom_components.s3_compatible.s3rest import S3RestClient, _StreamingBody
+from homeassistant.components.backup import AgentBackup, BackupAgentError
+from requests.exceptions import Timeout as RequestsTimeout
 
 MIB = 2**20
+
+
+@pytest.fixture(autouse=True)
+def no_sleep(monkeypatch):
+    delays: list[float] = []
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+
+    monkeypatch.setattr(backup_module.asyncio, "sleep", fake_sleep)
+    return delays
+
+
+def client_error(status: int, headers: dict | None = None) -> ClientError:
+    return ClientError(
+        {"ResponseMetadata": {"HTTPStatusCode": status, "HTTPHeaders": headers or {}}},
+        "Test",
+    )
 
 
 class FakeClient:
@@ -18,24 +42,45 @@ class FakeClient:
         self.part_types: set[type] = set()
         self.calls: list[str] = []
         self.put_bodies: dict[str, object] = {}
+        self.create_errors: list[Exception] = []
+        self.upload_part_errors: list[Exception] = []
+        self.complete_errors: list[Exception] = []
+        self.put_errors: dict[str, list[Exception]] = {}
+        self.put_attempts: dict[str, int] = {}
+        self.head_error: Exception | None = None
         self.download_chunks: list[bytes] = []
 
     async def create_multipart_upload(self, **kwargs):
         self.calls.append("create")
+        if self.create_errors:
+            raise self.create_errors.pop(0)
         return {"UploadId": "upload-1"}
 
     async def upload_part(self, *, PartNumber, Body, **kwargs):
+        if self.upload_part_errors:
+            raise self.upload_part_errors.pop(0)
         self.parts[PartNumber] = len(Body)
         self.part_types.add(type(Body))
         return {"ETag": f"etag-{PartNumber}"}
 
     async def complete_multipart_upload(self, **kwargs):
         self.calls.append("complete")
+        if self.complete_errors:
+            raise self.complete_errors.pop(0)
 
     async def abort_multipart_upload(self, **kwargs):
         self.calls.append("abort")
 
+    async def head_object(self, **kwargs):
+        self.calls.append("head")
+        if self.head_error:
+            raise self.head_error
+        return {}
+
     async def put_object(self, *, Key, Body, **kwargs):
+        self.put_attempts[Key] = self.put_attempts.get(Key, 0) + 1
+        if errors := self.put_errors.get(Key):
+            raise errors.pop(0)
         self.put_bodies[Key] = Body
 
     async def get_object_stream(self, **kwargs):
@@ -105,6 +150,128 @@ def upload(agent: S3BackupAgent, size: int):
     )
 
 
+def test_retries_throttling_then_succeeds(no_sleep):
+    calls = []
+
+    async def call(attempt):
+        calls.append(attempt)
+        if attempt < 2:
+            raise client_error(503)
+        return "ok"
+
+    assert asyncio.run(with_retries("test", call)) == "ok"
+    assert calls == [0, 1, 2]
+    assert len(no_sleep) == 2
+
+
+def test_retry_honors_retry_after(no_sleep):
+    async def call(attempt):
+        if attempt == 0:
+            raise client_error(429, {"retry-after": "7"})
+        return "ok"
+
+    asyncio.run(with_retries("test", call))
+    assert no_sleep == [7.0]
+
+
+def test_retries_connection_errors_until_exhausted(no_sleep):
+    async def call(attempt):
+        raise S3ConnectionError("reset")
+
+    with pytest.raises(S3ConnectionError):
+        asyncio.run(with_retries("test", call))
+    assert len(no_sleep) == backup_module.RETRY_ATTEMPTS - 1
+
+
+def test_does_not_retry_permanent_client_errors(no_sleep):
+    calls = []
+
+    async def call(attempt):
+        calls.append(attempt)
+        raise client_error(403)
+
+    with pytest.raises(ClientError):
+        asyncio.run(with_retries("test", call))
+    assert calls == [0]
+    assert no_sleep == []
+
+
+def test_rest_client_preserves_retry_response_metadata():
+    class Response:
+        status_code = 503
+        headers = {"Retry-After": "5"}
+        reason = "Service Unavailable"
+
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    class Session:
+        def __init__(self, response) -> None:
+            self.response = response
+            self.kwargs = {}
+
+        def request(self, *args, **kwargs):
+            self.kwargs = kwargs
+            return self.response
+
+    response = Response()
+    client = S3RestClient(
+        endpoint_url="https://s3.example.test",
+        aws_access_key_id="key",
+        aws_secret_access_key="secret",
+    )
+    original_session = client._session
+    session = Session(response)
+    client._session = session
+
+    try:
+        with pytest.raises(ClientError) as err:
+            client._request("GET", bucket="bucket")
+    finally:
+        original_session.close()
+
+    assert err.value.status_code == 503
+    assert err.value.headers == {"Retry-After": "5"}
+    assert session.kwargs["timeout"] == (30, 300)
+    assert response.closed
+
+
+def test_rest_client_maps_timeout_to_connection_error():
+    class Session:
+        def request(self, *args, **kwargs):
+            raise RequestsTimeout("timed out")
+
+    client = S3RestClient(
+        endpoint_url="https://s3.example.test",
+        aws_access_key_id="key",
+        aws_secret_access_key="secret",
+    )
+    original_session = client._session
+    client._session = Session()
+
+    try:
+        with pytest.raises(S3ConnectionError):
+            client._request("GET", bucket="bucket")
+    finally:
+        original_session.close()
+
+
+def test_retries_simple_and_metadata_uploads():
+    client = FakeClient()
+    client.put_errors = {
+        "b1.tar": [client_error(503)],
+        "b1.metadata.json": [client_error(503)],
+    }
+    agent = make_agent(client, part_size_mib=5)
+
+    upload(agent, 1024)
+
+    assert client.put_attempts == {"b1.tar": 2, "b1.metadata.json": 2}
+
+
 def test_multipart_parts_are_equal_sized_bytearrays():
     client = FakeClient()
     agent = make_agent(client, part_size_mib=5, max_concurrency=2)
@@ -138,6 +305,48 @@ def test_multipart_peak_memory_stays_near_two_parts():
 
     assert len(client.parts) == 10
     assert peak < 2.5 * part
+
+
+def test_part_is_retried_after_server_error():
+    client = FakeClient()
+    client.upload_part_errors = [client_error(503)]
+    agent = make_agent(client, part_size_mib=5)
+    upload(agent, 11 * MIB)
+
+    assert sorted(client.parts) == [1, 2, 3]
+    assert client.calls == ["create", "complete"]
+
+
+def test_multipart_creation_is_not_retried():
+    client = FakeClient()
+    client.create_errors = [client_error(503)]
+    agent = make_agent(client, part_size_mib=5)
+
+    with pytest.raises(BackupAgentError):
+        upload(agent, 11 * MIB)
+
+    assert client.calls == ["create"]
+
+
+def test_lost_complete_response_is_confirmed_with_head():
+    client = FakeClient()
+    client.complete_errors = [client_error(503), client_error(404)]
+    agent = make_agent(client, part_size_mib=5)
+    upload(agent, 11 * MIB)
+
+    assert client.calls == ["create", "complete", "complete", "head"]
+
+
+def test_complete_404_without_object_aborts():
+    client = FakeClient()
+    client.complete_errors = [client_error(503), client_error(404)]
+    client.head_error = client_error(404)
+    agent = make_agent(client, part_size_mib=5)
+
+    with pytest.raises(BackupAgentError):
+        upload(agent, 11 * MIB)
+
+    assert client.calls[-1] == "abort"
 
 
 def test_download_streams_chunks_and_closes(monkeypatch):
