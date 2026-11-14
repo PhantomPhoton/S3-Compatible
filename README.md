@@ -57,6 +57,12 @@ Large backups are uploaded in parts (S3 multipart upload). Two optional settings
 
 Each part is held in memory while it uploads, so peak memory use is roughly **(parts uploaded at once + 1) × part size**. The defaults keep the original behaviour (about 40 MB) and are safe on any hardware.
 
+Larger parts use more memory but reduce requests; for very large backups, check
+your S3 provider's part-count limit.
+
+Transient upload failures (HTTP 429, 500, 502, 503, 504, connection errors, and
+timeouts) are retried up to three times. Multipart initiation is not retried.
+
 | Hardware / connection | Suggested settings | Approx. peak memory |
 | --- | --- | --- |
 | Raspberry Pi or 1–2 GB RAM, or a slow upload connection | 20 MiB × 1 (default) | ~40 MB |
