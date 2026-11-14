@@ -5,6 +5,7 @@ import functools
 import json
 import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
+from contextlib import AsyncExitStack
 from time import time
 from typing import Any, TYPE_CHECKING
 
@@ -170,9 +171,28 @@ class S3BackupAgent(BackupAgent):
         backup = await self._find_backup_by_id(backup_id)
         tar_filename, _ = suggested_filenames(backup, self._prefix)
 
-        async with self._create_client() as client:
-            response = await client.get_object(Bucket=self._bucket, Key=tar_filename)
-        return response["Body"].iter_chunks()
+        stack = AsyncExitStack()
+        client = await stack.enter_async_context(self._create_client())
+        try:
+            body = await client.get_object_stream(
+                Bucket=self._bucket, Key=tar_filename
+            )
+        except BaseException:
+            await stack.aclose()
+            raise
+        return self._iter_body(body, stack)
+
+    async def _iter_body(self, body: Any, stack: AsyncExitStack) -> AsyncIterator[bytes]:
+        try:
+            async for chunk in body:
+                yield chunk
+        except BotoCoreError as err:
+            raise BackupAgentError("Failed during async_download_backup") from err
+        finally:
+            try:
+                await body.close()
+            finally:
+                await stack.aclose()
 
     async def async_upload_backup(
         self,
@@ -228,7 +248,7 @@ class S3BackupAgent(BackupAgent):
             await client.put_object(
                 Bucket=self._bucket,
                 Key=tar_filename,
-                Body=bytes(file_data),
+                Body=file_data,
             )
 
     async def _upload_multipart(
@@ -264,7 +284,9 @@ class S3BackupAgent(BackupAgent):
             slots = asyncio.Semaphore(self._max_concurrency)
             tasks: list[asyncio.Task[dict[str, Any]]] = []
 
-            async def _upload_part(part_number: int, body: bytes) -> dict[str, Any]:
+            async def _upload_part(
+                part_number: int, body: bytearray
+            ) -> dict[str, Any]:
                 try:
                     _LOGGER.info(
                         "Uploading part number %d, size %d", part_number, len(body)
@@ -280,7 +302,7 @@ class S3BackupAgent(BackupAgent):
                 finally:
                     slots.release()
 
-            async def _submit(body: bytes) -> None:
+            async def _submit(body: bytearray) -> None:
                 # Wait for a free upload slot; this bounds memory use.
                 await slots.acquire()
                 # Fail fast if an earlier part has already failed.
@@ -298,13 +320,13 @@ class S3BackupAgent(BackupAgent):
                 async for chunk in stream:
                     buffer.extend(chunk)
                     while len(buffer) >= part_size:
-                        body = bytes(buffer[:part_size])
-                        del buffer[:part_size]
+                        body, buffer = buffer, buffer[part_size:]
+                        del body[part_size:]
                         await _submit(body)
 
                 # Upload the final buffer as the last part (no minimum size).
                 if buffer:
-                    await _submit(bytes(buffer))
+                    await _submit(buffer)
                     buffer = bytearray()
 
                 parts = await asyncio.gather(*tasks)

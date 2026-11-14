@@ -17,7 +17,9 @@ from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
+from requests.exceptions import ChunkedEncodingError
 from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import Timeout
 
 from .exceptions import ClientError, ConnectionError, ParamValidationError
 from .sigv4 import sign_request
@@ -28,6 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 # Maximum number of pooled keep-alive connections per client. Must be at
 # least the number of concurrent part uploads used by the backup agent.
 HTTP_POOL_SIZE = 16
+DOWNLOAD_CHUNK_SIZE = 2**20
 
 
 class S3RestClient:
@@ -74,8 +77,9 @@ class S3RestClient:
         key: str = "",
         params: Optional[Dict[str, str]] = None,
         headers: Optional[Dict[str, str]] = None,
-        payload: Optional[bytes] = None,
+        payload: Optional[bytes | bytearray] = None,
         operation: str = "",
+        stream: bool = False,
     ) -> requests.Response:
         _LOGGER.info(
             "_request called method=%s bucket=%s key=%s operation=%s",
@@ -114,8 +118,9 @@ class S3RestClient:
                 data=payload_bytes if payload_bytes else None,
                 verify=self.verify,
                 allow_redirects=False,
+                stream=stream,
             )
-        except RequestsConnectionError as err:
+        except (RequestsConnectionError, Timeout, ChunkedEncodingError) as err:
             raise ConnectionError(str(err)) from err
 
         _LOGGER.info("_request response status_code=%d", response.status_code)
@@ -189,7 +194,17 @@ class S3RestClient:
         content = resp.content
         return {"Body": _Body(content), "ResponseMetadata": {"HTTPStatusCode": resp.status_code}}
 
-    def put_object(self, Bucket: str, Key: str, Body: bytes) -> Dict[str, Any]:
+    def get_object_stream(self, Bucket: str, Key: str) -> "_StreamingBody":
+        """Return the object body without loading it into memory."""
+        _LOGGER.info("get_object_stream called Bucket=%s Key=%s", Bucket, Key)
+        resp = self._request(
+            "GET", bucket=Bucket, key=Key, operation="GetObject", stream=True
+        )
+        return _StreamingBody(resp)
+
+    def put_object(
+        self, Bucket: str, Key: str, Body: bytes | bytearray | str
+    ) -> Dict[str, Any]:
         data = Body if isinstance(Body, (bytes, bytearray)) else Body.encode("utf-8")
         _LOGGER.info(
             "put_object called Bucket=%s Key=%s Body_bytes=%d",
@@ -265,7 +280,7 @@ class S3RestClient:
         Key: str,
         PartNumber: int,
         UploadId: str,
-        Body: bytes,
+        Body: bytes | bytearray,
     ) -> Dict[str, Any]:
         _LOGGER.info(
             "upload_part called Bucket=%s Key=%s PartNumber=%d UploadId=%s Body_bytes=%d",
@@ -377,6 +392,34 @@ class _Body:
     async def read(self) -> bytes:
         """Read the entire body as bytes."""
         return self._content
+
+
+class _StreamingBody:
+    """Async iterator over a streamed HTTP response, read in executor threads."""
+
+    def __init__(self, response: requests.Response) -> None:
+        self._response = response
+        self._chunks = response.iter_content(DOWNLOAD_CHUNK_SIZE)
+
+    def __aiter__(self) -> "_StreamingBody":
+        return self
+
+    def _next_chunk(self) -> bytes | None:
+        try:
+            return next(self._chunks, None)
+        except (RequestsConnectionError, Timeout, ChunkedEncodingError) as err:
+            raise ConnectionError(str(err)) from err
+
+    async def __anext__(self) -> bytes:
+        chunk = await asyncio.get_running_loop().run_in_executor(
+            None, self._next_chunk
+        )
+        if chunk is None:
+            raise StopAsyncIteration
+        return chunk
+
+    async def close(self) -> None:
+        await asyncio.get_running_loop().run_in_executor(None, self._response.close)
 
 
 @asynccontextmanager
