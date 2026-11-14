@@ -80,7 +80,7 @@ def sign_request(
     service: str = "s3",
     params: Mapping[str, str] | None = None,
     headers: Mapping[str, str] | None = None,
-    payload: bytes = b"",
+    payload: bytes | bytearray = b"",
     timestamp: datetime | None = None,
 ) -> tuple[dict[str, str], str]:
     """Return signed headers and the request URL including query string."""

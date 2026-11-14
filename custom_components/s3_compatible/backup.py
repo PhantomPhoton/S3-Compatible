@@ -4,12 +4,15 @@ import asyncio
 import functools
 import json
 import logging
-from collections.abc import AsyncIterator, Callable, Coroutine
+import random
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
+from contextlib import AsyncExitStack
 from time import time
 from typing import Any, TYPE_CHECKING
 
 from .s3rest import create_client
-from .exceptions import BotoCoreError
+from .exceptions import BotoCoreError, ClientError
+from .exceptions import ConnectionError as S3ConnectionError
 
 from homeassistant.components.backup import (
     AgentBackup,
@@ -39,6 +42,10 @@ from .const import (
     MAX_PART_SIZE_MIB,
     MIN_CONCURRENCY,
     MAX_CONCURRENCY,
+    RETRY_ATTEMPTS,
+    RETRY_BASE_DELAY,
+    RETRY_MAX_DELAY,
+    RETRYABLE_STATUS_CODES,
 )
 
 if TYPE_CHECKING:
@@ -48,6 +55,55 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 CACHE_TTL = 300
+
+
+def _retry_delay(err: BotoCoreError, attempt: int) -> float | None:
+    """Return seconds to wait before retrying, or None if not retryable."""
+    if isinstance(err, ClientError):
+        if err.status_code not in RETRYABLE_STATUS_CODES:
+            return None
+        retry_after = next(
+            (
+                value
+                for key, value in err.headers.items()
+                if key.lower() == "retry-after"
+            ),
+            None,
+        )
+        if retry_after is not None:
+            try:
+                return min(max(float(retry_after), 0.0), RETRY_MAX_DELAY)
+            except ValueError:
+                pass
+    elif not isinstance(err, S3ConnectionError):
+        return None
+
+    delay = RETRY_BASE_DELAY * 2**attempt + random.uniform(0, RETRY_BASE_DELAY)
+    return min(delay, RETRY_MAX_DELAY)
+
+
+async def with_retries[T](
+    description: str, call: Callable[[int], Awaitable[T]]
+) -> T:
+    """Retry transient throttling, server, and connection failures."""
+    for attempt in range(RETRY_ATTEMPTS):
+        try:
+            return await call(attempt)
+        except BotoCoreError as err:
+            delay = _retry_delay(err, attempt)
+            if delay is None or attempt == RETRY_ATTEMPTS - 1:
+                raise
+            _LOGGER.warning(
+                "%s failed (%s), retrying in %.1f s (attempt %d of %d)",
+                description,
+                err,
+                delay,
+                attempt + 2,
+                RETRY_ATTEMPTS,
+            )
+            await asyncio.sleep(delay)
+    raise AssertionError("unreachable")
+
 
 # S3 part size requirements: 5 MiB to 5 GiB per part
 # https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
@@ -170,9 +226,28 @@ class S3BackupAgent(BackupAgent):
         backup = await self._find_backup_by_id(backup_id)
         tar_filename, _ = suggested_filenames(backup, self._prefix)
 
-        async with self._create_client() as client:
-            response = await client.get_object(Bucket=self._bucket, Key=tar_filename)
-        return response["Body"].iter_chunks()
+        stack = AsyncExitStack()
+        client = await stack.enter_async_context(self._create_client())
+        try:
+            body = await client.get_object_stream(
+                Bucket=self._bucket, Key=tar_filename
+            )
+        except BaseException:
+            await stack.aclose()
+            raise
+        return self._iter_body(body, stack)
+
+    async def _iter_body(self, body: Any, stack: AsyncExitStack) -> AsyncIterator[bytes]:
+        try:
+            async for chunk in body:
+                yield chunk
+        except BotoCoreError as err:
+            raise BackupAgentError("Failed during async_download_backup") from err
+        finally:
+            try:
+                await body.close()
+            finally:
+                await stack.aclose()
 
     async def async_upload_backup(
         self,
@@ -197,10 +272,13 @@ class S3BackupAgent(BackupAgent):
             # Upload the metadata file
             metadata_content = json.dumps(backup.as_dict())
             async with self._create_client() as client:
-                await client.put_object(
-                    Bucket=self._bucket,
-                    Key=metadata_filename,
-                    Body=metadata_content,
+                await with_retries(
+                    "Metadata upload",
+                    lambda _: client.put_object(
+                        Bucket=self._bucket,
+                        Key=metadata_filename,
+                        Body=metadata_content,
+                    ),
                 )
         except BotoCoreError as err:
             raise BackupAgentError("Failed to upload backup") from err
@@ -225,10 +303,13 @@ class S3BackupAgent(BackupAgent):
             file_data.extend(chunk)
 
         async with self._create_client() as client:
-            await client.put_object(
-                Bucket=self._bucket,
-                Key=tar_filename,
-                Body=bytes(file_data),
+            await with_retries(
+                "Backup upload",
+                lambda _: client.put_object(
+                    Bucket=self._bucket,
+                    Key=tar_filename,
+                    Body=file_data,
+                ),
             )
 
     async def _upload_multipart(
@@ -264,23 +345,28 @@ class S3BackupAgent(BackupAgent):
             slots = asyncio.Semaphore(self._max_concurrency)
             tasks: list[asyncio.Task[dict[str, Any]]] = []
 
-            async def _upload_part(part_number: int, body: bytes) -> dict[str, Any]:
+            async def _upload_part(
+                part_number: int, body: bytearray
+            ) -> dict[str, Any]:
                 try:
                     _LOGGER.info(
                         "Uploading part number %d, size %d", part_number, len(body)
                     )
-                    part = await client.upload_part(
-                        Bucket=self._bucket,
-                        Key=tar_filename,
-                        PartNumber=part_number,
-                        UploadId=upload_id,
-                        Body=body,
+                    part = await with_retries(
+                        f"Upload of part {part_number}",
+                        lambda _: client.upload_part(
+                            Bucket=self._bucket,
+                            Key=tar_filename,
+                            PartNumber=part_number,
+                            UploadId=upload_id,
+                            Body=body,
+                        ),
                     )
                     return {"PartNumber": part_number, "ETag": part["ETag"]}
                 finally:
                     slots.release()
 
-            async def _submit(body: bytes) -> None:
+            async def _submit(body: bytearray) -> None:
                 # Wait for a free upload slot; this bounds memory use.
                 await slots.acquire()
                 # Fail fast if an earlier part has already failed.
@@ -298,23 +384,40 @@ class S3BackupAgent(BackupAgent):
                 async for chunk in stream:
                     buffer.extend(chunk)
                     while len(buffer) >= part_size:
-                        body = bytes(buffer[:part_size])
-                        del buffer[:part_size]
+                        body, buffer = buffer, buffer[part_size:]
+                        del body[part_size:]
                         await _submit(body)
 
                 # Upload the final buffer as the last part (no minimum size).
                 if buffer:
-                    await _submit(bytes(buffer))
+                    await _submit(buffer)
                     buffer = bytearray()
 
                 parts = await asyncio.gather(*tasks)
 
-                await client.complete_multipart_upload(
-                    Bucket=self._bucket,
-                    Key=tar_filename,
-                    UploadId=upload_id,
-                    MultipartUpload={"Parts": parts},
-                )
+                async def _complete(attempt: int) -> None:
+                    try:
+                        await client.complete_multipart_upload(
+                            Bucket=self._bucket,
+                            Key=tar_filename,
+                            UploadId=upload_id,
+                            MultipartUpload={"Parts": parts},
+                        )
+                    except ClientError as err:
+                        if attempt == 0 or err.status_code != 404:
+                            raise
+                        try:
+                            await client.head_object(
+                                Bucket=self._bucket, Key=tar_filename
+                            )
+                        except ClientError:
+                            raise err from None
+                        _LOGGER.info(
+                            "Multipart upload for %s was already completed",
+                            tar_filename,
+                        )
+
+                await with_retries("Completing multipart upload", _complete)
                 _LOGGER.info(
                     "Completed multipart upload for %s (%d parts)",
                     tar_filename,
