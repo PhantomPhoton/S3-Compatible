@@ -21,6 +21,7 @@ from requests.exceptions import ChunkedEncodingError
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import Timeout
 
+from .const import HTTP_CONNECT_TIMEOUT, HTTP_READ_TIMEOUT
 from .exceptions import ClientError, ConnectionError, ParamValidationError
 from .sigv4 import sign_request
 
@@ -118,6 +119,7 @@ class S3RestClient:
                 data=payload_bytes if payload_bytes else None,
                 verify=self.verify,
                 allow_redirects=False,
+                timeout=(HTTP_CONNECT_TIMEOUT, HTTP_READ_TIMEOUT),
                 stream=stream,
             )
         except (RequestsConnectionError, Timeout, ChunkedEncodingError) as err:
@@ -137,13 +139,17 @@ class S3RestClient:
                 )
 
         if response.status_code >= 400:
+            response.close()
             raise ClientError(
                 {
                     "Error": {
                         "Code": str(response.status_code),
                         "Message": response.reason or "",
                     },
-                    "ResponseMetadata": {"HTTPStatusCode": response.status_code},
+                    "ResponseMetadata": {
+                        "HTTPStatusCode": response.status_code,
+                        "HTTPHeaders": dict(response.headers),
+                    },
                 },
                 operation or method,
             )
@@ -201,6 +207,14 @@ class S3RestClient:
             "GET", bucket=Bucket, key=Key, operation="GetObject", stream=True
         )
         return _StreamingBody(resp)
+
+    def head_object(self, Bucket: str, Key: str) -> Dict[str, Any]:
+        _LOGGER.info("head_object called Bucket=%s Key=%s", Bucket, Key)
+        resp = self._request("HEAD", bucket=Bucket, key=Key, operation="HeadObject")
+        return {
+            "ContentLength": int(resp.headers.get("Content-Length", 0)),
+            "ResponseMetadata": {"HTTPStatusCode": resp.status_code},
+        }
 
     def put_object(
         self, Bucket: str, Key: str, Body: bytes | bytearray | str
