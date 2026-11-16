@@ -200,7 +200,7 @@ class S3RestClient:
         content = resp.content
         return {"Body": _Body(content), "ResponseMetadata": {"HTTPStatusCode": resp.status_code}}
 
-    def get_object_stream(self, Bucket: str, Key: str) -> "_StreamingBody":
+    def get_object_stream(self, Bucket: str, Key: str) -> _StreamingBody:
         """Return the object body without loading it into memory."""
         _LOGGER.info("get_object_stream called Bucket=%s Key=%s", Bucket, Key)
         resp = self._request(
